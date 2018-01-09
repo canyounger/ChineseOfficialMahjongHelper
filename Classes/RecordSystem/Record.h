@@ -30,6 +30,7 @@ struct Record {
     size_t current_index;   // 当前打到第几盘
     time_t start_time;      // 开始时间
     time_t end_time;        // 结束时间
+    uint16_t countdown;     // 倒计时
 };
 
 #define SET_WIN_CLAIM(wc_, n_) ((wc_) |= (1 << (n_)))

@@ -472,6 +472,7 @@ void ScoreSheetScene::refreshStartTime() {
     _timeLabel->setString(Common::format("开始时间：%d年%d月%d日%.2d:%.2d",
         ret.tm_year + 1900, ret.tm_mon + 1, ret.tm_mday, ret.tm_hour, ret.tm_min));
     _timeLabel->setScale(1);
+    _timeLabel->setColor(Color3B::BLACK);
 }
 
 void ScoreSheetScene::refreshEndTime() {
@@ -483,6 +484,7 @@ void ScoreSheetScene::refreshEndTime() {
 
     Size visibleSize = Director::getInstance()->getVisibleSize();
     cw::scaleLabelToFitWidth(_timeLabel, visibleSize.width - 10.0f);
+    _timeLabel->setColor(Color3B::BLACK);
 }
 
 void ScoreSheetScene::recover() {
@@ -535,7 +537,13 @@ void ScoreSheetScene::recover() {
         _recordButton[_record.current_index]->setVisible(true);
         _recordButton[_record.current_index]->setEnabled(true);
 
-        refreshStartTime();
+        if (_record.countdown == 0) {
+            refreshStartTime();
+        }
+        else {
+            onCountdownScheduler(0.0f);
+            this->schedule(schedule_selector(ScoreSheetScene::onCountdownScheduler), 0.2f);
+        }
     }
     else {
         refreshEndTime();
@@ -818,13 +826,73 @@ void ScoreSheetScene::onLockButton(cocos2d::Ref *) {
         return;
     }
 
-    memset(_totalScores, 0, sizeof(_totalScores));
+    // 设置时限弹出框
+    Node *rootNode = Node::create();
+    rootNode->setContentSize(Size(120.0f, 45.0f));
 
-    for (int i = 0; i < 4; ++i) {
-        _nameLabel[i]->setVisible(true);
-        _nameLabel[i]->setString(name[i]);
-        cw::scaleLabelToFitWidth(_nameLabel[i], _cellWidth - 4.0f);
-    }
+    ui::RadioButtonGroup *radioGroup = ui::RadioButtonGroup::create();
+    rootNode->addChild(radioGroup);
+
+    ui::RadioButton *radioButton = UICommon::createRadioButton();
+    radioButton->setZoomScale(0.0f);
+    radioButton->ignoreContentAdaptWithSize(false);
+    radioButton->setContentSize(Size(20.0f, 20.0f));
+    radioButton->setPosition(Vec2(10.0f, 35.0f));
+    rootNode->addChild(radioButton);
+    radioGroup->addRadioButton(radioButton);
+
+    Label *label = Label::createWithSystemFont("不限时", "Arial", 12);
+    label->setColor(Color3B::BLACK);
+    label->setAnchorPoint(Vec2::ANCHOR_MIDDLE_LEFT);
+    radioButton->addChild(label);
+    label->setPosition(Vec2(25.0f, 10.0f));
+
+    radioButton = UICommon::createRadioButton();
+    radioButton->setZoomScale(0.0f);
+    radioButton->ignoreContentAdaptWithSize(false);
+    radioButton->setContentSize(Size(20.0f, 20.0f));
+    radioButton->setPosition(Vec2(10.0f, 10.0f));
+    rootNode->addChild(radioButton);
+    radioGroup->addRadioButton(radioButton);
+
+    ui::EditBox *editBox = UICommon::createEditBox(Size(50.0f, 20.0f));
+    editBox->setInputFlag(ui::EditBox::InputFlag::SENSITIVE);
+    editBox->setInputMode(ui::EditBox::InputMode::NUMERIC);
+    editBox->setReturnType(ui::EditBox::KeyboardReturnType::DONE);
+    editBox->setFontColor(Color4B::BLACK);
+    editBox->setFontSize(12);
+    editBox->setText("110");
+    radioButton->addChild(editBox);
+    editBox->setPosition(Vec2(50.0f, 10.0f));
+
+    label = Label::createWithSystemFont("分钟", "Arial", 12);
+    label->setColor(Color3B::BLACK);
+    label->setAnchorPoint(Vec2::ANCHOR_MIDDLE_LEFT);
+    cw::scaleLabelToFitWidth(label, 175.0f);
+    radioButton->addChild(label);
+    label->setPosition(Vec2(80.0f, 10.0f));
+
+    editBox->setEnabled(false);
+    radioGroup->addEventListener([editBox](ui::RadioButton *, int index, ui::RadioButtonGroup::EventType) {
+        editBox->setEnabled(index == 1);
+    });
+
+    AlertDialog::Builder(this)
+        .setTitle("设置时限")
+        .setContentNode(rootNode)
+        .setNegativeButton("取消", nullptr)
+        .setPositiveButton("确定", [this, radioGroup, editBox](AlertDialog *, int) {
+        uint16_t countdown = 0;
+        if (radioGroup->getSelectedButtonIndex() == 1) {
+            countdown = static_cast<uint16_t>(atoi(editBox->getText()));
+        }
+        start(countdown);
+        return true;
+    }).create()->show();
+}
+
+void ScoreSheetScene::start(uint16_t countdown) {
+    memset(_totalScores, 0, sizeof(_totalScores));
 
     _recordButton[0]->setVisible(true);
     _recordButton[0]->setEnabled(true);
@@ -835,6 +903,12 @@ void ScoreSheetScene::onLockButton(cocos2d::Ref *) {
 
     _record.start_time = time(nullptr);
     refreshStartTime();
+
+    _record.countdown = countdown;
+    if (countdown > 0) {
+        onCountdownScheduler(0.0f);
+        this->schedule(schedule_selector(ScoreSheetScene::onCountdownScheduler), 0.2f);
+    }
 
     if (_isGlobal) {
         writeToFile(_record);
@@ -886,6 +960,19 @@ void ScoreSheetScene::editRecord(size_t handIdx, bool modify) {
                 _recordButton[_record.current_index]->setEnabled(true);
             }
             else {
+                _record.end_time = time(nullptr);
+                refreshEndTime();
+                RecordHistoryScene::modifyRecord(&_record);
+            }
+        }
+
+        if (_record.countdown > 0) {
+            time_t endTime = _record.countdown * 60 + _record.start_time;
+            time_t now = time(nullptr);
+            if (now > endTime) {
+                while (_record.current_index < 16) {
+                    fillRow(_record.current_index++);
+                }
                 _record.end_time = time(nullptr);
                 refreshEndTime();
                 RecordHistoryScene::modifyRecord(&_record);
@@ -1051,11 +1138,34 @@ void ScoreSheetScene::onDetailButton(cocos2d::Ref *, size_t handIdx) {
 }
 
 void ScoreSheetScene::onTimeScheduler(float) {
-    time_t t = time(nullptr);
-    struct tm ret = *localtime(&t);
+    time_t now = time(nullptr);
+    struct tm ret = *localtime(&now);
     _timeLabel->setString(Common::format("当前时间：%d年%d月%d日%.2d:%.2d",
         ret.tm_year + 1900, ret.tm_mon + 1, ret.tm_mday, ret.tm_hour, ret.tm_min));
     _timeLabel->setScale(1);
+}
+
+void ScoreSheetScene::onCountdownScheduler(float) {
+    time_t endTime = _record.countdown * 60 + _record.start_time;
+    time_t now = time(nullptr);
+    struct tm ret = *localtime(&endTime);
+    if (now > endTime) {
+        _timeLabel->setString(Common::format("结束时间为：%.2d:%.2d。比赛时间到，打完当前盘",
+            ret.tm_hour, ret.tm_min));
+        this->unschedule(schedule_selector(ScoreSheetScene::onCountdownScheduler));
+        _timeLabel->setScale(1);
+        _timeLabel->setColor(C3B_RED);
+    }
+    else {
+        int dt = static_cast<int>(endTime - now);
+        div_t ret1 = div(dt, 3600);
+        div_t ret2 = div(ret1.rem, 60);
+        _timeLabel->setString(Common::format("结束时间为：%.2d:%.2d，剩余时间：%.2d:%.2d:%.2d",
+            ret.tm_hour, ret.tm_min, ret1.quot, ret2.quot, ret2.rem));
+
+        Size visibleSize = Director::getInstance()->getVisibleSize();
+        cw::scaleLabelToFitWidth(_timeLabel, visibleSize.width - 10.0f);
+    }
 }
 
 void ScoreSheetScene::onInstructionButton(cocos2d::Ref *) {

@@ -40,10 +40,12 @@ private:
     void editName(size_t idx);
     void editNameAllAtOnce(size_t idx);
     void onLockButton(cocos2d::Ref *sender);
+    void start(uint16_t countdown);
     void onRecordButton(cocos2d::Ref *sender, size_t handIdx);
     void onDetailButton(cocos2d::Ref *sender, size_t handIdx);
     void editRecord(size_t handIdx, bool modify);
     void onTimeScheduler(float dt);
+    void onCountdownScheduler(float dt);
     void onInstructionButton(cocos2d::Ref *sender);
     void onHistoryButton(cocos2d::Ref *sender);
     void onResetButton(cocos2d::Ref *sender);

@@ -182,6 +182,11 @@ void JsonToRecord(const rapidjson::Value &json, Record &record) {
     if (it != json.MemberEnd() && it->value.IsUint64()) {
         record.end_time = static_cast<time_t>(it->value.GetUint64());
     }
+
+    it = json.FindMember("countdown");
+    if (it != json.MemberEnd() && it->value.IsUint()) {
+        record.countdown = static_cast<uint16_t>(it->value.GetUint());
+    }
 }
 
 void RecordToJson(const Record &record, rapidjson::Value &json, rapidjson::Value::AllocatorType &alloc) {
@@ -225,6 +230,7 @@ void RecordToJson(const Record &record, rapidjson::Value &json, rapidjson::Value
 
     json.AddMember("start_time", rapidjson::Value(static_cast<uint64_t>(record.start_time)), alloc);
     json.AddMember("end_time", rapidjson::Value(static_cast<uint64_t>(record.end_time)), alloc);
+    json.AddMember("countdown", rapidjson::Value(record.countdown), alloc);
 }
 
 void SortRecords(std::vector<Record> &records) {
